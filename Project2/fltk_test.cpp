@@ -13,10 +13,47 @@
 
 using namespace std;
 
+string serverUsername = "Carlton";
+string serverPassword = "313MainSt!";
+
+mysqlx::Session mySession(mysqlx::SessionOption::HOST, "localhost",
+	mysqlx::SessionOption::PORT, 33060,
+	mysqlx::SessionOption::USER, serverUsername,
+	mysqlx::SessionOption::PWD, serverPassword);
+
+mysqlx::Schema hotel = mySession.getSchema("hotel");
+mysqlx::Table login = hotel.getTable("login");
+mysqlx::Table loginAttempt = hotel.getTable("loginAttempt");
+mysqlx::Table guest = hotel.getTable("guest");
+
 int loginWindow();
 int userWindow();
 Fl_Window* win = new Fl_Window(750, 500, "Login");
 
+
+void connectToServer()
+{
+	// Connect to MySQL Server on a network machine
+	mysqlx::Session mySession(mysqlx::SessionOption::HOST, "localhost",
+		mysqlx::SessionOption::PORT, 33060,
+		mysqlx::SessionOption::USER, serverUsername,
+		mysqlx::SessionOption::PWD, serverPassword);
+
+	mysqlx::Schema hotel = mySession.getSchema("hotel");
+	mysqlx::Table login = hotel.getTable("login");
+	mysqlx::Table loginAttempt = hotel.getTable("loginAttempt");
+	mysqlx::Table guest = hotel.getTable("guest");
+
+	//lists all databases on accessed server
+	list<mysqlx::Schema> schemaList = mySession.getSchemas();
+	for (mysqlx::Schema schema : schemaList)
+	{
+		cout << schema.getName() << endl;
+	}
+
+	//After connecting to the server login window opens
+	loginWindow();
+}
 
 //Custom struct used to keep track of our text input fields and the text inside
 struct LoginInfo
@@ -42,13 +79,13 @@ struct LoginInfo
 	char pass[20];
 };
 
-struct userPage
+struct UserPage
 {
 	Fl_Button *getNamesByRoom;
 	Fl_Box *getNamesByRoomText;
 
 	Fl_Input *roomNum;
-	int roomNumber[3];
+	char roomNumber[3];
 };
 
 
@@ -85,9 +122,19 @@ void createAcc_cb(Fl_Widget*, void*)
 	std::cout << "Sorry. This feature is not yet available" << std::endl;
 }
 
-void queryInput_cb(Fl_Widget*, void*)
+void searchLogByRoom_cb(Fl_Widget* getNamesByRoom, void* p)
 {
-	cout << "query";
+	UserPage* userPage = reinterpret_cast<UserPage*>(p);
+	strcpy_s(userPage->roomNumber, userPage->roomNum->value());
+	string x = userPage->roomNumber;
+	string singleQuote = "'";
+	string comma = ",";
+	string closeParen = ")";
+	string query = "name = '" + x + singleQuote;
+	mysqlx::RowResult myResult = guest.select("name", "roomNum").where(query).execute();
+
+	mysqlx::Row row = myResult.fetchOne();
+	cout << row[0] << ", " << row[1] << endl;
 }
 
 int loginWindow()
@@ -118,14 +165,16 @@ int loginWindow()
 
 int userWindow()
 {
-	userPage attempt;
+	UserPage userPage;
+	
 	Fl_Window *win = new Fl_Window(750, 500, "User Page");
 	win->begin();
 
-	attempt.getNamesByRoomText = new Fl_Box(250, 0, 200, 200, "Get Names by Room Number");
-	attempt.getNamesByRoom = new Fl_Button(300, 150, 50, 25, "OK");
+	userPage.getNamesByRoomText = new Fl_Box(250, 0, 200, 200, "Get Names by Room Number");
+	userPage.getNamesByRoom = new Fl_Button(300, 200, 50, 25, "OK");
+	userPage.roomNum = new Fl_Input(360, 125, 50, 25);
 
-	attempt.getNamesByRoom->callback(queryInput_cb);
+	userPage.getNamesByRoom->callback(searchLogByRoom_cb);
 
 	win->end();
 	win->show();
@@ -133,59 +182,8 @@ int userWindow()
 	return Fl::run();
 }
 
-string promptUserName()
-{
-	string username;
-	cout << "Enter user name and press enter" << endl;
-	cin >> username;
-	return username;
-}
 
-string promptPassword()
-{
-	string password;
-	cout << "Enter password and press enter" << endl;
-	cin >> password;
-	return password;
-}
 
-//TODO currently with failed login to local server
-//you will get a program-ending error
-void connectToServer()
-{
-	string username = promptUserName();
-	string password = promptPassword();
-
-	string usr = username;
-	string pwd = password;
-
-	// Connect to MySQL Server on a network machine
-	mysqlx::Session mySession(mysqlx::SessionOption::HOST, "localhost",
-		mysqlx::SessionOption::PORT, 33060,
-		mysqlx::SessionOption::USER, usr,
-		mysqlx::SessionOption::PWD, pwd);
-
-	//lists all databases on accessed server
-	list<mysqlx::Schema> schemaList = mySession.getSchemas();
-	for (mysqlx::Schema schema : schemaList)
-	{
-		cout << schema.getName() << endl;
-	}
-
-	//make this as callback on button click
-	//selects database to use and prints first 2 rows
-	/*
-	mySession.sql("use mydb;").execute();
-	auto result = mySession.sql("select * from test;").execute();
-	mysqlx::Row row = result.fetchOne();
-	mysqlx::Row row2 = result.fetchOne();
-	cout << row[0] << "," << row[1] << endl;
-	cout << row2[0] << "," << row2[1] << endl;
-	*/
-
-	//After connecting to the server login window opens
-	loginWindow();
-}
 
 int main()
 {
