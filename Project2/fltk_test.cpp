@@ -99,22 +99,47 @@ void login_cb(Fl_Widget* Login, void* p)
 	strcpy_s(attempt->user, attempt->Uname->value());
 	strcpy_s(attempt->pass, attempt->Pass->value());
 
-	//sample if just to check if the username and password are a valid combination
-	if ((strcmp(attempt->user, "user") != 0) || (strcmp(attempt->pass, "pass")))
-	{
-		attempt->welcome->hide();
-		attempt->invalid->show();
-	}
-	else {
-		attempt->welcome->hide();
-		attempt->invalid->hide();
-		attempt->loggedIn->show();
-		
-		win->hide(); //close login window
-		userWindow();  //open user window
-	}
+	//function to loginAttempt
+		//insert
+	string singleQuote = "'";
+	string userGuess = attempt->user;
+	string pwGuess = attempt->pass;
+	
+	//delete everything from loginAttempt
+	loginAttempt.remove().execute();
+	loginAttempt.insert("username", "password").values(userGuess, pwGuess).execute();
+	//select
+	mysqlx::RowResult loginAttemptResults = loginAttempt.select("username", "password").execute();
+	mysqlx::Row loginAttemptRow = loginAttemptResults.fetchOne();
+
+
+
+	//function to check loginAttempt against login
+	string loginQuery = "username = '" + userGuess + singleQuote;
+	mysqlx::RowResult loginResults = login.select("username", "password")
+		.where(loginQuery).execute();
+
+	mysqlx::Row loginRow = loginResults.fetchOne();
+
+	//TODO crashes if username is not valid
+		//need to first check if the username is 
+		//a valid username before running loginQuery
+	mysqlx::string logAU = loginAttemptRow[0];
+	mysqlx::string logAPW = loginAttemptRow[1];
+	mysqlx::string logU = loginRow[0];
+	mysqlx::string logPW = loginRow[1];
 
 	std::cout << attempt->user << std::endl << attempt->pass << std::endl;
+
+	if (logAU == logU && logAPW == logPW)
+	{
+		cout << "Login Success" << endl;
+		userWindow();
+	}
+	else
+	{
+		cout << "Login Failed" << endl;
+	}
 }
 
 void createAcc_cb(Fl_Widget*, void*)
