@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <cstring>
 #include<FL/Fl.h>
 #include<FL/Fl_Box.h>
 #include<FL/Fl_Window.h>
@@ -13,10 +14,50 @@
 
 using namespace std;
 
-int loginWindow();
-int userWindow();
-Fl_Window* win = new Fl_Window(750, 500, "Login");
 
+string promptUser()
+{
+	string x;
+	cout << "Enter server username:  " << endl;
+	cin >> x;
+	return x;
+}
+string promptPass()
+{
+	string x;
+	cout << "Enter server password:  " << endl;
+	cin >> x;
+	return x;
+}
+
+	mysqlx::Session mySession(mysqlx::SessionOption::HOST, "localhost",
+		mysqlx::SessionOption::PORT, 33060,
+		mysqlx::SessionOption::USER, promptUser(),
+		mysqlx::SessionOption::PWD, promptPass());
+
+	mysqlx::Schema hotel = mySession.getSchema("hotel");
+	mysqlx::Table login = hotel.getTable("login");
+	mysqlx::Table loginAttempt = hotel.getTable("loginAttempt");
+	mysqlx::Table guest = hotel.getTable("guest");
+
+	int loginWindow();
+	int userWindow();
+	Fl_Window* win = new Fl_Window(750, 500, "Login");
+
+
+void connectToServer()
+{
+
+	//lists all databases on accessed server
+	list<mysqlx::Schema> schemaList = mySession.getSchemas();
+	for (mysqlx::Schema schema : schemaList)
+	{
+		cout << schema.getName() << endl;
+	}
+
+	//After testing server connection login window opens
+	loginWindow();
+}
 
 //Custom struct used to keep track of our text input fields and the text inside
 struct LoginInfo
@@ -42,15 +83,17 @@ struct LoginInfo
 	char pass[20];
 };
 
-struct userPage
+struct UserPage
 {
 	Fl_Button *getNamesByRoom;
 	Fl_Box *getNamesByRoomText;
 
 	Fl_Input *roomNum;
-	int roomNumber[3];
-};
+	char roomNumber[3];
 
+	Fl_Box *searchResultsText;
+};
+UserPage userPage;
 
 void login_cb(Fl_Widget* Login, void* p)
 {
@@ -62,22 +105,49 @@ void login_cb(Fl_Widget* Login, void* p)
 	strcpy_s(attempt->user, attempt->Uname->value());
 	strcpy_s(attempt->pass, attempt->Pass->value());
 
-	//sample if just to check if the username and password are a valid combination
-	if ((strcmp(attempt->user, "user") != 0) || (strcmp(attempt->pass, "pass")))
-	{
-		attempt->welcome->hide();
-		attempt->invalid->show();
-	}
-	else {
-		attempt->welcome->hide();
-		attempt->invalid->hide();
-		attempt->loggedIn->show();
-		
-		win->hide(); //close login window
-		userWindow();  //open user window
-	}
+	//function to loginAttempt
+		//insert
+	string singleQuote = "'";
+	string userGuess = attempt->user;
+	string pwGuess = attempt->pass;
+	
+	//delete everything from loginAttempt
+	loginAttempt.remove().execute();
+	loginAttempt.insert("username", "password").values(userGuess, pwGuess).execute();
+	//select
+	mysqlx::RowResult loginAttemptResults = loginAttempt.select("username", "password").execute();
+	mysqlx::Row loginAttemptRow = loginAttemptResults.fetchOne();
+
+
+
+	//function to check loginAttempt against login
+	string loginQuery = "username = '" + userGuess + singleQuote;
+	mysqlx::RowResult loginResults = login.select("username", "password")
+		.where(loginQuery).execute();
+
+	mysqlx::Row loginRow = loginResults.fetchOne();
+
+	//TODO crashes if username is not valid
+		//need to first check if the username is 
+		//a valid username before running loginQuery
+	mysqlx::string logAU = loginAttemptRow[0];
+	mysqlx::string logAPW = loginAttemptRow[1];
+	mysqlx::string logU = loginRow[0];
+	mysqlx::string logPW = loginRow[1];
 
 	std::cout << attempt->user << std::endl << attempt->pass << std::endl;
+
+	if (logAU == logU && logAPW == logPW)
+	{
+		cout << "Login Success" << endl;
+		win->hide();
+		
+		userWindow();
+	}
+	else
+	{
+		cout << "Login Failed" << endl;
+	}
 }
 
 void createAcc_cb(Fl_Widget*, void*)
@@ -85,10 +155,40 @@ void createAcc_cb(Fl_Widget*, void*)
 	std::cout << "Sorry. This feature is not yet available" << std::endl;
 }
 
-void queryInput_cb(Fl_Widget*, void*)
+
+static void searchLogByRoom_cb(Fl_Widget* getNamesByRoom, void* p)
 {
-	cout << "query";
+	UserPage* userPage = reinterpret_cast<UserPage*>(p);
+	strcpy_s(userPage->roomNumber, userPage->roomNum->value());
+	string x = userPage->roomNumber;
+	cout << x << endl;
+	string singleQuote = "'";
+	string comma = ", ";
+	string closeParen = ")";
+	string query = "roomNum = '" + x + singleQuote;
+	mysqlx::RowResult myResult = guest.select("name", "roomNum").where(query).execute();
+
+	mysqlx::Row row = myResult.fetchOne();
+
+	mysqlx::string mysqlComma = ", ";
+	
+	//convert mysqlx::string to std::string to c string to fit label() parameter :)
+	mysqlx::string searchResults;
+	string finalSearchResults;
+	char cstr[30];
+	searchResults = row[0];
+
+	finalSearchResults = searchResults;
+	strcpy_s(cstr, finalSearchResults.c_str());
+	cout << "cstr " << cstr << endl;
+
+	cout << "fsr " << finalSearchResults << endl;
+	userPage->searchResultsText->label(cstr);
+	
 }
+
+
+
 
 int loginWindow()
 {
@@ -118,73 +218,24 @@ int loginWindow()
 
 int userWindow()
 {
-	userPage attempt;
+	
+	
 	Fl_Window *win = new Fl_Window(750, 500, "User Page");
 	win->begin();
 
-	attempt.getNamesByRoomText = new Fl_Box(250, 0, 200, 200, "Get Names by Room Number");
-	attempt.getNamesByRoom = new Fl_Button(300, 150, 50, 25, "OK");
+	userPage.getNamesByRoomText = new Fl_Box(250, 0, 200, 200, "Get Names by Room Number");
+	userPage.getNamesByRoom = new Fl_Button(300, 200, 50, 25, "OK");
+	userPage.roomNum = new Fl_Input(360, 125, 50, 25, "roomNumber");
 
-	attempt.getNamesByRoom->callback(queryInput_cb);
-
+	
+	userPage.getNamesByRoom->callback(searchLogByRoom_cb, &userPage);
+	
+	userPage.searchResultsText = new Fl_Box(250, 300, 200, 200);
+	
 	win->end();
 	win->show();
 
 	return Fl::run();
-}
-
-string promptUserName()
-{
-	string username;
-	cout << "Enter user name and press enter" << endl;
-	cin >> username;
-	return username;
-}
-
-string promptPassword()
-{
-	string password;
-	cout << "Enter password and press enter" << endl;
-	cin >> password;
-	return password;
-}
-
-//TODO currently with failed login to local server
-//you will get a program-ending error
-void connectToServer()
-{
-	string username = promptUserName();
-	string password = promptPassword();
-
-	string usr = username;
-	string pwd = password;
-
-	// Connect to MySQL Server on a network machine
-	mysqlx::Session mySession(mysqlx::SessionOption::HOST, "localhost",
-		mysqlx::SessionOption::PORT, 33060,
-		mysqlx::SessionOption::USER, usr,
-		mysqlx::SessionOption::PWD, pwd);
-
-	//lists all databases on accessed server
-	list<mysqlx::Schema> schemaList = mySession.getSchemas();
-	for (mysqlx::Schema schema : schemaList)
-	{
-		cout << schema.getName() << endl;
-	}
-
-	//make this as callback on button click
-	//selects database to use and prints first 2 rows
-	/*
-	mySession.sql("use mydb;").execute();
-	auto result = mySession.sql("select * from test;").execute();
-	mysqlx::Row row = result.fetchOne();
-	mysqlx::Row row2 = result.fetchOne();
-	cout << row[0] << "," << row[1] << endl;
-	cout << row2[0] << "," << row2[1] << endl;
-	*/
-
-	//After connecting to the server login window opens
-	loginWindow();
 }
 
 int main()
