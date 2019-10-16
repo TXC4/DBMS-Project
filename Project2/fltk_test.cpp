@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <cstring>
 #include<FL/Fl.h>
 #include<FL/Fl_Box.h>
 #include<FL/Fl_Window.h>
@@ -13,36 +14,39 @@
 
 using namespace std;
 
-string serverUsername = "Carlton";
-string serverPassword = "313MainSt!";
 
-mysqlx::Session mySession(mysqlx::SessionOption::HOST, "localhost",
-	mysqlx::SessionOption::PORT, 33060,
-	mysqlx::SessionOption::USER, serverUsername,
-	mysqlx::SessionOption::PWD, serverPassword);
-
-mysqlx::Schema hotel = mySession.getSchema("hotel");
-mysqlx::Table login = hotel.getTable("login");
-mysqlx::Table loginAttempt = hotel.getTable("loginAttempt");
-mysqlx::Table guest = hotel.getTable("guest");
-
-int loginWindow();
-int userWindow();
-Fl_Window* win = new Fl_Window(750, 500, "Login");
-
-
-void connectToServer()
+string promptUser()
 {
-	// Connect to MySQL Server on a network machine
+	string x;
+	cout << "Enter server username:  " << endl;
+	cin >> x;
+	return x;
+}
+string promptPass()
+{
+	string x;
+	cout << "Enter server password:  " << endl;
+	cin >> x;
+	return x;
+}
+
 	mysqlx::Session mySession(mysqlx::SessionOption::HOST, "localhost",
 		mysqlx::SessionOption::PORT, 33060,
-		mysqlx::SessionOption::USER, serverUsername,
-		mysqlx::SessionOption::PWD, serverPassword);
+		mysqlx::SessionOption::USER, promptUser(),
+		mysqlx::SessionOption::PWD, promptPass());
 
 	mysqlx::Schema hotel = mySession.getSchema("hotel");
 	mysqlx::Table login = hotel.getTable("login");
 	mysqlx::Table loginAttempt = hotel.getTable("loginAttempt");
 	mysqlx::Table guest = hotel.getTable("guest");
+
+	int loginWindow();
+	int userWindow();
+	Fl_Window* win = new Fl_Window(750, 500, "Login");
+
+
+void connectToServer()
+{
 
 	//lists all databases on accessed server
 	list<mysqlx::Schema> schemaList = mySession.getSchemas();
@@ -51,7 +55,7 @@ void connectToServer()
 		cout << schema.getName() << endl;
 	}
 
-	//After connecting to the server login window opens
+	//After testing server connection login window opens
 	loginWindow();
 }
 
@@ -86,8 +90,10 @@ struct UserPage
 
 	Fl_Input *roomNum;
 	char roomNumber[3];
-};
 
+	Fl_Box *searchResultsText;
+};
+UserPage userPage;
 
 void login_cb(Fl_Widget* Login, void* p)
 {
@@ -134,6 +140,8 @@ void login_cb(Fl_Widget* Login, void* p)
 	if (logAU == logU && logAPW == logPW)
 	{
 		cout << "Login Success" << endl;
+		win->hide();
+		
 		userWindow();
 	}
 	else
@@ -147,20 +155,40 @@ void createAcc_cb(Fl_Widget*, void*)
 	std::cout << "Sorry. This feature is not yet available" << std::endl;
 }
 
-void searchLogByRoom_cb(Fl_Widget* getNamesByRoom, void* p)
+
+static void searchLogByRoom_cb(Fl_Widget* getNamesByRoom, void* p)
 {
 	UserPage* userPage = reinterpret_cast<UserPage*>(p);
 	strcpy_s(userPage->roomNumber, userPage->roomNum->value());
 	string x = userPage->roomNumber;
+	cout << x << endl;
 	string singleQuote = "'";
-	string comma = ",";
+	string comma = ", ";
 	string closeParen = ")";
-	string query = "name = '" + x + singleQuote;
+	string query = "roomNum = '" + x + singleQuote;
 	mysqlx::RowResult myResult = guest.select("name", "roomNum").where(query).execute();
 
 	mysqlx::Row row = myResult.fetchOne();
-	cout << row[0] << ", " << row[1] << endl;
+
+	mysqlx::string mysqlComma = ", ";
+	
+	//convert mysqlx::string to std::string to c string to fit label() parameter :)
+	mysqlx::string searchResults;
+	string finalSearchResults;
+	char cstr[30];
+	searchResults = row[0];
+
+	finalSearchResults = searchResults;
+	strcpy_s(cstr, finalSearchResults.c_str());
+	cout << "cstr " << cstr << endl;
+
+	cout << "fsr " << finalSearchResults << endl;
+	userPage->searchResultsText->label(cstr);
+	
 }
+
+
+
 
 int loginWindow()
 {
@@ -190,25 +218,25 @@ int loginWindow()
 
 int userWindow()
 {
-	UserPage userPage;
+	
 	
 	Fl_Window *win = new Fl_Window(750, 500, "User Page");
 	win->begin();
 
 	userPage.getNamesByRoomText = new Fl_Box(250, 0, 200, 200, "Get Names by Room Number");
 	userPage.getNamesByRoom = new Fl_Button(300, 200, 50, 25, "OK");
-	userPage.roomNum = new Fl_Input(360, 125, 50, 25);
+	userPage.roomNum = new Fl_Input(360, 125, 50, 25, "roomNumber");
 
-	userPage.getNamesByRoom->callback(searchLogByRoom_cb);
-
+	
+	userPage.getNamesByRoom->callback(searchLogByRoom_cb, &userPage);
+	
+	userPage.searchResultsText = new Fl_Box(250, 300, 200, 200);
+	
 	win->end();
 	win->show();
 
 	return Fl::run();
 }
-
-
-
 
 int main()
 {
